@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>한화에어로 워치 — 012450 관제 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Pretendard/1.3.9/static/pretendard.css"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg-0:#0A0F14;
+    --bg-1:#0E1720;
+    --bg-2:#131F29;
+    --line:#22323F;
+    --line-soft:#1A2731;
+    --ink:#E7EEF3;
+    --ink-dim:#8CA0AC;
+    --ink-faint:#5B6E79;
+    --up:#F04452;      /* 한국시장 관례: 상승=적색 */
+    --down:#3E8FE0;     /* 한국시장 관례: 하락=청색 */
+    --amber:#F2A93B;
+    --amber-dim:#5A431E;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:
+      radial-gradient(ellipse 1200px 600px at 15% -10%, rgba(63,143,224,0.06), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 100% 0%, rgba(240,68,82,0.05), transparent 55%),
+      var(--bg-0);
+    color:var(--ink);
+    font-family:'Pretendard', -apple-system, sans-serif;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  .mono{font-family:'JetBrains Mono', monospace;}
+  .display{font-family:'Black Han Sans', sans-serif; letter-spacing:0.01em;}
+
+  /* ===== 상단 경보줄 ===== */
+  .alertbar{
+    background:var(--bg-1);
+    border-bottom:1px solid var(--line);
+    padding:7px 20px;
+    display:flex; align-items:center; gap:10px;
+    font-size:12px; color:var(--ink-dim);
+    overflow:hidden; white-space:nowrap;
+  }
+  .alertbar .dot{width:6px;height:6px;border-radius:50%;background:var(--up);flex-shrink:0;
+    box-shadow:0 0 8px var(--up); animation:pulse 1.8s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .alertbar .ticker{overflow:hidden; flex:1;}
+  .alertbar .ticker span{display:inline-block; padding-right:60px; font-family:'JetBrains Mono',monospace; color:var(--ink-dim);}
+  .alertbar .ticker span b{color:var(--ink); font-weight:600;}
+
+  /* ===== 헤더 ===== */
+  header{
+    padding:36px 20px 28px;
+    max-width:1180px; margin:0 auto;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.18em;
+    color:var(--ink-faint); text-transform:uppercase; margin-bottom:14px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{content:"//"; color:var(--amber);}
+  .hero{
+    display:flex; justify-content:space-between; align-items:flex-end; gap:24px; flex-wrap:wrap;
+  }
+  .hero h1{
+    font-size:clamp(32px, 5vw, 56px);
+    font-family:'Black Han Sans', sans-serif;
+    line-height:1.05;
+    color:var(--ink);
+  }
+  .hero h1 .code{color:var(--ink-faint); font-size:0.4em; font-family:'JetBrains Mono',monospace; font-weight:400; margin-left:10px;}
+  .price-block{text-align:right;}
+  .price-now{
+    font-family:'JetBrains Mono',monospace; font-weight:700;
+    font-size:clamp(28px, 4vw, 44px); color:var(--ink); line-height:1;
+  }
+  .price-now .won{font-size:0.5em; color:var(--ink-faint); font-weight:400;}
+  .price-delta{
+    margin-top:6px; font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:600;
+    color:var(--up);
+  }
+  .price-meta{margin-top:8px; font-size:11px; color:var(--ink-faint);}
+
+  /* ===== 섹션 공통 ===== */
+  main{max-width:1180px; margin:0 auto; padding:0 20px 80px;}
+  section{padding-top:56px;}
+  .sec-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;}
+  .sec-head h2{font-size:20px; font-weight:700; display:flex; align-items:center; gap:10px;}
+  .sec-head h2 .num{font-family:'JetBrains Mono',monospace; color:var(--amber); font-size:14px;}
+  .sec-head p{font-size:12.5px; color:var(--ink-faint); max-width:420px; text-align:right;}
+
+  /* ===== 카드 ===== */
+  .panel{
+    background:var(--bg-1);
+    border:1px solid var(--line);
+    border-radius:2px;
+    position:relative;
+  }
+  .panel::before{
+    content:""; position:absolute; top:0; left:0; width:100%; height:1px;
+    background:linear-gradient(90deg, var(--amber), transparent 40%);
+  }
+
+  /* ===== 차트 섹션 ===== */
+  .chart-card{padding:22px;}
+  .tabs{display:flex; gap:2px; margin-bottom:18px; border:1px solid var(--line); width:fit-content; border-radius:2px; overflow:hidden;}
+  .tabs button{
+    font-family:'JetBrains Mono',monospace; font-size:12px; padding:8px 16px;
+    background:var(--bg-2); color:var(--ink-faint); border:none; cursor:pointer;
+    border-right:1px solid var(--line); transition:.15s;
+  }
+  .tabs button:last-child{border-right:none;}
+  .tabs button.active{background:var(--amber); color:#1a1206; font-weight:700;}
+  .tabs button:hover:not(.active){color:var(--ink);}
+  .chart-wrap{height:340px; position:relative;}
+  .chart-foot{display:flex; justify-content:space-between; margin-top:14px; font-size:11px; color:var(--ink-faint); font-family:'JetBrains Mono',monospace;}
+
+  /* ===== 수급 그리드 ===== */
+  .flow-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:16px;}
+  @media(max-width:760px){.flow-grid{grid-template-columns:1fr;}}
+  .flow-card{padding:20px;}
+  .flow-card .who{font-size:12px; color:var(--ink-faint); font-family:'JetBrains Mono',monospace; letter-spacing:.05em; margin-bottom:10px;}
+  .flow-card .amt{font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:700;}
+  .flow-card .amt.buy{color:var(--up);}
+  .flow-card .amt.sell{color:var(--down);}
+  .flow-card .streak{margin-top:8px; font-size:11.5px; color:var(--ink-dim);}
+  .flow-card .streak b{color:var(--amber);}
+
+  .signal-panel{padding:20px 22px;}
+  .signal-row{display:flex; align-items:flex-start; gap:14px; padding:13px 0; border-bottom:1px solid var(--line-soft);}
+  .signal-row:last-child{border-bottom:none;}
+  .signal-level{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:700; padding:3px 8px;
+    border-radius:2px; white-space:nowrap; letter-spacing:.04em; margin-top:2px;
+  }
+  .lv-notice{background:rgba(242,169,59,0.12); color:var(--amber); border:1px solid var(--amber-dim);}
+  .lv-caution{background:rgba(240,68,82,0.1); color:var(--up); border:1px solid rgba(240,68,82,.35);}
+  .lv-info{background:rgba(60,143,224,0.1); color:var(--down); border:1px solid rgba(60,143,224,.3);}
+  .signal-body b{display:block; font-size:14px; margin-bottom:3px;}
+  .signal-body span{font-size:12.5px; color:var(--ink-dim);}
+
+  .broker-table{width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:13px;}
+  .broker-table th{text-align:left; color:var(--ink-faint); font-weight:500; font-size:11px; padding:8px 10px; border-bottom:1px solid var(--line); text-transform:uppercase; letter-spacing:.05em;}
+  .broker-table td{padding:9px 10px; border-bottom:1px solid var(--line-soft);}
+  .broker-table tr:last-child td{border-bottom:none;}
+  .broker-table td.buy{color:var(--up);}
+  .broker-table td.sell{color:var(--down);}
+
+  /* ===== 뉴스 ===== */
+  .news-list{display:flex; flex-direction:column; gap:1px; background:var(--line);}
+  .news-item{
+    background:var(--bg-1); padding:16px 20px; display:grid;
+    grid-template-columns:90px 1fr 110px; gap:16px; align-items:center;
+  }
+  @media(max-width:640px){.news-item{grid-template-columns:1fr; gap:6px;}}
+  .news-item .src{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--amber); font-weight:600;}
+  .news-item .headline{font-size:14.5px; color:var(--ink);}
+  .news-item .tag{
+    font-size:10.5px; font-family:'JetBrains Mono',monospace; text-align:right; color:var(--ink-faint);
+  }
+  .cat{display:inline-block; font-size:10px; padding:2px 7px; border-radius:2px; margin-right:8px; font-family:'JetBrains Mono',monospace; vertical-align:1px;}
+  .cat-earn{background:rgba(240,68,82,.12); color:var(--up);}
+  .cat-export{background:rgba(242,169,59,.12); color:var(--amber);}
+  .cat-macro{background:rgba(60,143,224,.12); color:var(--down);}
+
+  /* ===== 하단 ===== */
+  .refresh-note{
+    margin-top:18px; padding:16px 18px; border:1px dashed var(--line); border-radius:2px;
+    font-size:12.5px; color:var(--ink-faint); display:flex; gap:12px; align-items:flex-start;
+  }
+  .refresh-note .ico{color:var(--amber); font-family:'JetBrains Mono',monospace; font-weight:700;}
+
+  footer{
+    max-width:1180px; margin:0 auto; padding:32px 20px 60px;
+    border-top:1px solid var(--line-soft); margin-top:20px;
+    font-size:11.5px; color:var(--ink-faint); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="alertbar">
+    <div class="dot" id="conn-dot"></div>
+    <div class="ticker">
+      <span id="ticker-text">백엔드 연결 대기 중 · API_BASE를 배포한 서버 주소로 바꿔주세요</span>
+      <span id="ticker-text-2">백엔드 연결 대기 중 · API_BASE를 배포한 서버 주소로 바꿔주세요</span>
+    </div>
+    <div id="conn-label" style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-faint); flex-shrink:0;">OFFLINE</div>
+  </div>
+
+  <header>
+    <div class="eyebrow">방산 · 우주 · 조선 관제 / DEFENSE INTEL TERMINAL</div>
+    <div class="hero">
+      <h1>한화에어로 워치<span class="code">012450·KS</span></h1>
+      <div class="price-block">
+        <div class="price-now" id="price-now">—<span class="won">원</span></div>
+        <div class="price-delta" id="price-delta">데이터 대기중</div>
+        <div class="price-meta" id="price-meta">백엔드 연결 후 자동 표시됩니다</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- 가격 추세 -->
+    <section id="chart">
+      <div class="sec-head">
+        <h2><span class="num">01</span> 가격 추세</h2>
+        <p>일봉·주봉·월봉·연봉 전환으로 단기 변동성과 장기 방향성을 함께 확인합니다.</p>
+      </div>
+      <div class="panel chart-card">
+        <div class="tabs" id="tf-tabs">
+          <button data-tf="daily" class="active">일봉</button>
+          <button data-tf="weekly">주봉</button>
+          <button data-tf="monthly">월봉</button>
+          <button data-tf="yearly">연봉</button>
+        </div>
+        <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+        <div class="chart-foot">
+          <span id="chart-caption">2026.08.03 ~ 08.07 · 5거래일 · 종가 기준</span>
+          <span>단위: 원(KRW)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 수급 -->
+    <section id="flow">
+      <div class="sec-head">
+        <h2><span class="num">02</span> 투자자별 매매동향</h2>
+        <p>순매수 총량과 함께, 외국인 매매의 창구(증권사)별 흐름 및 연속 매매일수를 봅니다.</p>
+      </div>
+
+      <div class="flow-grid" id="flow-grid">
+        <div class="panel flow-card"><div class="who">개인 INDIVIDUAL</div><div class="amt" id="flow-individual">—</div><div class="streak" id="flow-individual-streak">데이터 대기중</div></div>
+        <div class="panel flow-card"><div class="who">외국인 FOREIGN</div><div class="amt" id="flow-foreign">—</div><div class="streak" id="flow-foreign-streak">데이터 대기중</div></div>
+        <div class="panel flow-card"><div class="who">기관 INSTITUTION</div><div class="amt" id="flow-institution">—</div><div class="streak" id="flow-institution-streak">데이터 대기중</div></div>
+      </div>
+
+      <div class="panel signal-panel" style="margin-bottom:16px;" id="signal-panel">
+        <div class="signal-row"><div class="signal-body"><span>백엔드 연결 후 이상 신호가 여기 자동으로 표시됩니다. (개인/외국인/기관 연속 매매일수, 통계적으로 튀는 순매수량 등을 서버가 계산)</span></div></div>
+      </div>
+
+      <div class="panel" style="padding:16px 22px; font-size:12.5px; color:var(--ink-faint);">
+        외국계 <b style="color:var(--ink-dim);">창구별(JP모간·골드만 등)</b> 상세는 KIS 개인 개발자 API 표준 상품에는 포함되지 않아 이 서버가 자동 수집하지 않습니다. 필요하실 때 Claude에게 요청하시면 그때그때 조사해드릴게요.
+      </div>
+    </section>
+
+    <!-- 뉴스 -->
+    <section id="news">
+      <div class="sec-head">
+        <h2><span class="num">03</span> 최신 뉴스</h2>
+        <p>실적·수주(수출)·거시 이슈로 구분해, 방산 전문지·경제지·해외 매체를 함께 정리합니다.</p>
+      </div>
+      <div class="news-list" id="news-list">
+        <div class="news-item"><div class="src">—</div><div class="headline">백엔드 연결 후 최신 뉴스가 여기 자동으로 표시됩니다.</div><div class="tag">대기중</div></div>
+      </div>
+
+      <div class="refresh-note">
+        <div class="ico">!</div>
+        <div>가격은 20초, 수급·차트는 5분, 뉴스는 10분 주기로 백엔드에서 자동 갱신됩니다. 무료 클라우드(Render 등) 플랜은 일정 시간 요청이 없으면 슬립 상태가 되어 첫 접속이 느릴 수 있습니다. 창구별(JP모간 등) 상세 데이터는 자동화 범위 밖이라 필요시 Claude에게 별도로 요청해 주세요.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>한화에어로 워치 — 개인 투자 참고용 정보 정리 도구</span>
+    <span>투자 판단과 책임은 투자자 본인에게 있으며, 이 페이지는 투자 권유가 아닙니다.</span>
+  </footer>
+
+<script>
+/* ============================================================
+   같은 서버(백엔드)가 이 대시보드를 직접 서빙하므로 상대경로를 씁니다.
+   → file:// 로컬 실행 시 생기는 CORS/보안 차단 문제가 사라집니다.
+   ============================================================ */
+const API_BASE = "";
+
+async function apiGet(path){
+  const res = await fetch(API_BASE + path, {cache:'no-store'});
+  if(!res.ok) throw new Error('API error '+res.status);
+  return res.json();
+}
+
+function setConn(ok){
+  const dot = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  dot.style.background = ok ? '#F04452' : '#5B6E79';
+  dot.style.boxShadow = ok ? '0 0 8px #F04452' : 'none';
+  label.textContent = ok ? 'LIVE' : 'OFFLINE';
+  label.style.color = ok ? '#F04452' : '#5B6E79';
+}
+
+function fmtNum(n){ return n.toLocaleString('ko-KR'); }
+
+async function refreshPrice(){
+  try{
+    const {data} = await apiGet('/api/price');
+    if(!data) return;
+    document.getElementById('price-now').innerHTML = fmtNum(data.price) + '<span class="won">원</span>';
+    const up = data.change >= 0;
+    document.getElementById('price-delta').textContent = (up?'▲ ':'▼ ') + fmtNum(Math.abs(data.change)) + ` (${data.change_rate>0?'+':''}${data.change_rate}%)`;
+    document.getElementById('price-delta').style.color = up ? 'var(--up)' : 'var(--down)';
+    document.getElementById('price-meta').textContent = `${data.code} · 거래량 ${fmtNum(data.volume)}주 · 실시간 폴링(20초)`;
+    document.getElementById('ticker-text').innerHTML = `<b>${data.code} 한화에어로스페이스</b> · 현재가 ${fmtNum(data.price)}원 (${data.change_rate}%)`;
+    document.getElementById('ticker-text-2').innerHTML = document.getElementById('ticker-text').innerHTML;
+    setConn(true);
+  }catch(e){ setConn(false); console.error(e); }
+}
+
+const LEVEL_LABEL = {caution:['주의','lv-caution'], notice:['관심','lv-notice'], info:['참고','lv-info']};
+
+async function refreshFlow(){
+  try{
+    const {investor_trend, signals} = await apiGet('/api/flow');
+    if(investor_trend && investor_trend.length){
+      const last = investor_trend[investor_trend.length-1];
+      const set = (key, val)=>{
+        const el = document.getElementById('flow-'+key);
+        el.textContent = (val>=0?'+':'') + fmtNum(val) + '주';
+        el.className = 'amt ' + (val>=0?'buy':'sell');
+      };
+      set('individual', last.individual);
+      set('foreign', last.foreign);
+      set('institution', last.institution);
+    }
+    if(signals && signals.length){
+      const panel = document.getElementById('signal-panel');
+      panel.innerHTML = signals.map(s=>{
+        const [label, cls] = LEVEL_LABEL[s.level] || ['참고','lv-info'];
+        return `<div class="signal-row">
+          <div class="signal-level ${cls}">${label}</div>
+          <div class="signal-body"><b>${s.title}</b><span>${s.detail}</span></div>
+        </div>`;
+      }).join('');
+    }
+  }catch(e){ console.error(e); }
+}
+
+const CAT_LABEL = {earn:['실적','cat-earn'], export:['수주','cat-export'], macro:['이슈','cat-macro']};
+
+async function refreshNews(){
+  try{
+    const {data} = await apiGet('/api/news');
+    if(!data || !data.length) return;
+    const list = document.getElementById('news-list');
+    list.innerHTML = data.slice(0,15).map(n=>{
+      const [label, cls] = CAT_LABEL[n.category] || ['이슈','cat-macro'];
+      const d = n.pub_date ? new Date(n.pub_date).toLocaleDateString('ko-KR') : '';
+      return `<div class="news-item">
+        <div class="src">${n.source || (n.link ? new URL(n.link).hostname.replace('www.','') : '')}</div>
+        <div class="headline"><span class="cat ${cls}">${label}</span>${n.title}</div>
+        <div class="tag">${d}</div>
+      </div>`;
+    }).join('');
+  }catch(e){ console.error(e); }
+}
+
+async function refreshChartFromApi(tf){
+  const map = {daily:'D', weekly:'W', monthly:'M', yearly:'Y'};
+  try{
+    const {data} = await apiGet('/api/chart/' + map[tf]);
+    if(!data || !data.length) return null;
+    return {
+      labels: data.map(d=>d.date),
+      data: data.map(d=>d.close),
+      caption: `${data[0].date} ~ ${data[data.length-1].date} · ${data.length}개 봉 · 종가 기준 (실시간 연결)`
+    };
+  }catch(e){ console.error(e); return null; }
+}
+
+refreshPrice(); refreshFlow(); refreshNews();
+setInterval(refreshPrice, 20000);
+setInterval(refreshFlow, 5*60000);
+setInterval(refreshNews, 10*60000);
+
+const datasets = {
+  daily: {
+    labels:['08.03','08.04','08.05','08.06','08.07'],
+    data:[919000,1004000,1007000,1054000,1097000],
+    caption:'2026.08.03 ~ 08.07 · 5거래일 · 종가 기준'
+  },
+  weekly: {
+    labels:['7월 2주','7월 3주','7월 4주','7월 5주','8월 1주'],
+    data:[905000,860000,795000,919000,1097000],
+    caption:'2026년 7월 2주 ~ 8월 1주 · 주간 종가 기준(추정)'
+  },
+  monthly: {
+    labels:['26.02','26.03','26.04','26.05','26.06','26.07','26.08'],
+    data:[1280000,1375000,1150000,1080000,980000,905000,1097000],
+    caption:'2026.02 ~ 08 · 월간 종가 기준(추정) · 3월 고점 → 7월 저점 → 8월 반등 구간'
+  },
+  yearly: {
+    labels:['2022','2023','2024','2025','2026(현재)'],
+    data:[75000,155000,320000,880000,1097000],
+    caption:'2022 ~ 2026 · 연말(현재年 최근) 종가 기준(추정) · 방산 수출 확대 사이클과 동행'
+  }
+};
+
+const ctx = document.getElementById('priceChart').getContext('2d');
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.color = '#7C8A96';
+
+function gradient(ctxRef){
+  const g = ctxRef.createLinearGradient(0,0,0,340);
+  g.addColorStop(0,'rgba(240,68,82,0.28)');
+  g.addColorStop(1,'rgba(240,68,82,0.0)');
+  return g;
+}
+
+let chart = new Chart(ctx, {
+  type:'line',
+  data:{
+    labels:datasets.daily.labels,
+    datasets:[{
+      data:datasets.daily.data,
+      borderColor:'#F04452',
+      backgroundColor:gradient(ctx),
+      fill:true,
+      tension:0.25,
+      pointRadius:4,
+      pointBackgroundColor:'#0E1720',
+      pointBorderColor:'#F04452',
+      pointBorderWidth:2,
+      borderWidth:2.5
+    }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false},
+      tooltip:{
+        backgroundColor:'#131F29', borderColor:'#22323F', borderWidth:1,
+        titleColor:'#E7EEF3', bodyColor:'#F04452', padding:10,
+        callbacks:{ label:(c)=> c.parsed.y.toLocaleString('ko-KR')+'원' }
+      }
+    },
+    scales:{
+      x:{ grid:{color:'#1A2731'}, ticks:{font:{size:11}} },
+      y:{ grid:{color:'#1A2731'}, ticks:{ font:{size:11}, callback:(v)=> (v/10000)+'만' } }
+    }
+  }
+});
+
+document.getElementById('tf-tabs').addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  document.querySelectorAll('#tf-tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const tf = btn.dataset.tf;
+  const live = await refreshChartFromApi(tf);
+  const d = live || {...datasets[tf], caption: datasets[tf].caption + ' · 예시(백엔드 미연결)'};
+  chart.data.labels = d.labels;
+  chart.data.datasets[0].data = d.data;
+  chart.update();
+  document.getElementById('chart-caption').textContent = d.caption;
+});
+// 첫 로드시 일봉도 실시간 데이터로 교체 시도
+(async ()=>{
+  const live = await refreshChartFromApi('daily');
+  if(live){
+    chart.data.labels = live.labels;
+    chart.data.datasets[0].data = live.data;
+    chart.update();
+    document.getElementById('chart-caption').textContent = live.caption;
+  } else {
+    document.getElementById('chart-caption').textContent = datasets.daily.caption + ' · 예시(백엔드 미연결)';
+  }
+})();
+</script>
+</body>
+</html>
